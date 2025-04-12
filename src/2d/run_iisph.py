@@ -5,7 +5,8 @@ import shutil
 
 import warp as wp
 
-from util.io_util import remove_everything_in
+import util.io_util as io_util
+from util.io_util import dump_boundary_particles, remove_everything_in
 from util.logger import Logger
 from sim.init_conditions import init_leapfrog
 
@@ -49,6 +50,17 @@ if from_frame <= 0 and args.name is not None:
 
 logger = Logger(os.path.join(logsdir, "log.txt"))
 
+vort_dir = "vort"
+vort_dir = os.path.join(logsdir, vort_dir)
+os.makedirs(vort_dir, exist_ok=True)
+vel_dir = "vel"
+vel_dir = os.path.join(logsdir, vel_dir)
+os.makedirs(vel_dir, exist_ok=True)
+particles_dir = "particles"
+particles_dir = os.path.join(logsdir, particles_dir)
+os.makedirs(particles_dir, exist_ok=True)
+shutil.copy(__file__, logsdir)
+
 wp.set_device("cuda:0")
 wp.config.mode = "debug"
 wp.config.verify_cuda = True
@@ -58,37 +70,69 @@ wp.init()
 
 ################################## Variables #####################################
 particles = wp.zeros(init_nx * init_ny, dtype=wp.vec2)
+particles_3d = wp.zeros(init_nx * init_ny, dtype=wp.vec3)  # for query
 velocities = wp.zeros(init_nx * init_ny, dtype=wp.vec2)
 boundary_particles = wp.zeros(
     (init_nx + 2 * kernel_scale) * (init_ny + 2 * kernel_scale) - init_nx * init_ny,
     dtype=wp.vec2,
 )
+boundary_particles_3d = wp.zeros(
+    (init_nx + 2 * kernel_scale) * (init_ny + 2 * kernel_scale) - init_nx * init_ny,
+    dtype=wp.vec3,
+)
+
+hash_grid = wp.HashGrid(dim_x=grid_nx, dim_y=grid_ny, dim_z=1)
+hash_grid_boundary = wp.HashGrid(
+    dim_x=grid_nx + 2 * kernel_scale, dim_y=grid_ny + 2 * kernel_scale, dim_z=1
+)
+
+
+# for visualization
+grid_vorticities = wp.zeros(shape=(grid_nx, grid_ny), dtype=float)
+grid_velocities = wp.zeros(shape=(grid_nx, grid_ny), dtype=wp.vec2)
 ################################################################################
 
 
-def main():
-    vortdir = "vort"
-    vortdir = os.path.join(logsdir, vortdir)
-    os.makedirs(vortdir, exist_ok=True)
-    veldir = "vel"
-    veldir = os.path.join(logsdir, veldir)
-    os.makedirs(veldir, exist_ok=True)
-    particlesdir = "particles"
-    particlesdir = os.path.join(logsdir, particlesdir)
-    os.makedirs(particlesdir, exist_ok=True)
-    shutil.copy(__file__, logsdir)
+def dump_data():
+    io_util.to_output_format(
+        particles_3d,
+        velocities,
+        grid_velocities,
+        grid_vorticities,
+        kernel_radius,
+        hash_grid,
+        dx,
+    )
+    io_util.dump_data(
+        particles_dir,
+        vel_dir,
+        vort_dir,
+        particles,
+        grid_velocities,
+        grid_vorticities,
+        0,
+    )
 
+
+def main():
     init_leapfrog(
         particles,
+        particles_3d,
         velocities,
         boundary_particles,
+        boundary_particles_3d,
         init_nx,
         init_ny,
         dx,
         kernel_scale,
-        kernel_radius,
     )
+    # solve possion
+    hash_grid.build(points=particles_3d, radius=kernel_radius)
+    hash_grid_boundary.build(points=boundary_particles_3d, radius=kernel_radius)
+    dump_boundary_particles(particles_dir, particles,boundary_particles)
+    dump_data()
 
 
 if __name__ == "__main__":
     main()
+    wp.synchronize()
