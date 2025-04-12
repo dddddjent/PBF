@@ -6,6 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from sim.kernel_function import W
 from sim.grid import curl
+from util.warp_util import to2d, to3d
 
 
 # remove everything in dir
@@ -35,7 +36,7 @@ def str_to_bool(value: str | bool) -> bool:
 # p2g, for velocity
 @wp.kernel
 def p2g(
-    particles_3d: wp.array(dtype=wp.vec3),
+    particles: wp.array(dtype=wp.vec3),
     velocities: wp.array(dtype=wp.vec2),
     grid_velocities: wp.array2d(dtype=wp.vec2),
     hash_grid: wp.uint64,
@@ -51,18 +52,16 @@ def p2g(
     query = wp.hash_grid_query(hash_grid, p, kernel_radius)
     index = int(0)
     while wp.hash_grid_query_next(query, index):
-        temp = p - particles_3d[index]
-        x_grid_p = wp.vec2(temp.x, temp.y)
+        x_grid_p = to2d(p - particles[index])
         if wp.length(x_grid_p) < kernel_radius:
             grid_mass += W(x_grid_p, kernel_radius) * 1.0
             grid_velocity += velocities[index] * W(x_grid_p, kernel_radius) * 1.0
 
-    # grid_velocities[i, j] = wp.cw_div(grid_velocity, wp.vec2(grid_mass, grid_mass))
-    grid_velocities[i, j] = grid_velocity / grid_mass
+    grid_velocities[i, j] = grid_velocity / (grid_mass + 1e-6)
 
 
 def to_output_format(
-    particles_3d: wp.array(dtype=wp.vec2),
+    particles: wp.array(dtype=wp.vec3),
     velocities: wp.array(dtype=wp.vec2),
     grid_velocities: wp.array(dtype=wp.vec2),
     grid_vorticities: wp.array(dtype=float),
@@ -74,7 +73,7 @@ def to_output_format(
         p2g,
         dim=grid_velocities.shape,
         inputs=[
-            particles_3d,
+            particles,
             velocities,
             grid_velocities,
             hash_grid.id,
@@ -94,7 +93,7 @@ def dump_data(
     particles_dir: str,
     velocity_dir: str,
     vorticity_dir: str,
-    particles: wp.array(dtype=wp.vec2),
+    particles: wp.array(dtype=wp.vec3),
     grid_velocities: wp.array(dtype=wp.vec2),
     grid_vorticities: wp.array(dtype=float),
     frame_idx: int,
@@ -145,8 +144,8 @@ def dump_data(
 
 def dump_boundary_particles(
     particles_dir: str,
-    paricles: wp.array(dtype=wp.vec2),
-    boundary_particles: wp.array(dtype=wp.vec2),
+    paricles: wp.array(dtype=wp.vec3),
+    boundary_particles: wp.array(dtype=wp.vec3),
 ):
     wp.synchronize()
 

@@ -4,6 +4,7 @@ import datetime
 import shutil
 
 import warp as wp
+import numpy as np
 
 import util.io_util as io_util
 from util.io_util import dump_boundary_particles, remove_everything_in
@@ -69,14 +70,9 @@ wp.init()
 ################################################################################
 
 ################################## Variables #####################################
-particles = wp.zeros(init_nx * init_ny, dtype=wp.vec2)
-particles_3d = wp.zeros(init_nx * init_ny, dtype=wp.vec3)  # for query
+particles = wp.zeros(init_nx * init_ny, dtype=wp.vec3)
 velocities = wp.zeros(init_nx * init_ny, dtype=wp.vec2)
 boundary_particles = wp.zeros(
-    (init_nx + 2 * kernel_scale) * (init_ny + 2 * kernel_scale) - init_nx * init_ny,
-    dtype=wp.vec2,
-)
-boundary_particles_3d = wp.zeros(
     (init_nx + 2 * kernel_scale) * (init_ny + 2 * kernel_scale) - init_nx * init_ny,
     dtype=wp.vec3,
 )
@@ -95,7 +91,7 @@ grid_velocities = wp.zeros(shape=(grid_nx, grid_ny), dtype=wp.vec2)
 
 def dump_data():
     io_util.to_output_format(
-        particles_3d,
+        particles,
         velocities,
         grid_velocities,
         grid_vorticities,
@@ -117,19 +113,17 @@ def dump_data():
 def main():
     init_leapfrog(
         particles,
-        particles_3d,
         velocities,
         boundary_particles,
-        boundary_particles_3d,
         init_nx,
         init_ny,
         dx,
         kernel_scale,
     )
     # solve possion
-    hash_grid.build(points=particles_3d, radius=kernel_radius)
-    hash_grid_boundary.build(points=boundary_particles_3d, radius=kernel_radius)
-    dump_boundary_particles(particles_dir, particles,boundary_particles)
+    hash_grid.build(points=particles, radius=kernel_radius)
+    hash_grid_boundary.build(points=boundary_particles, radius=kernel_radius)
+    dump_boundary_particles(particles_dir, particles, boundary_particles)
     dump_data()
 
 

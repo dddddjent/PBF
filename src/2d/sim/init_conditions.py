@@ -1,12 +1,11 @@
 import warp as wp
+from util.warp_util import to2d, to3d
 
 
 def init_leapfrog(
-    particles: wp.array(dtype=wp.vec2),
-    particles_3d: wp.array(dtype=wp.vec3),
+    particles: wp.array(dtype=wp.vec3),
     velocities: wp.array(dtype=wp.vec2),
-    boundary_particles: wp.array(dtype=wp.vec2),
-    boundary_particles_3d: wp.array(dtype=wp.vec3),
+    boundary_particles: wp.array(dtype=wp.vec3),
     init_nx: int,
     init_ny: int,
     dx: float,
@@ -35,8 +34,7 @@ def init_leapfrog(
 
     @wp.kernel
     def _init_leapfrog_particles(
-        particles: wp.array(dtype=wp.vec2),
-        particles_3d: wp.array(dtype=wp.vec3),
+        particles: wp.array(dtype=wp.vec3),
         velocities: wp.array(dtype=wp.vec2),
         ny: int,
         dx: float,
@@ -45,10 +43,9 @@ def init_leapfrog(
         p_idx = i * ny + j  # particle index
 
         p = wp.vec2(wp.float32(i), wp.float32(j)) * dx
-        particles[p_idx] = p
-        particles_3d[p_idx] = wp.vec3(p.x, p.y, 0.0)
+        particles[p_idx] = to3d(p)
 
-        velocities[p_idx] = wp.vec2(0.0, 0.0)
+        velocities[p_idx] = wp.vec2()
 
         diff = p - c1
         r = wp.length(diff)
@@ -76,8 +73,7 @@ def init_leapfrog(
 
     @wp.kernel
     def _init_leapfrog_boundary_particles(
-        boundary_particles: wp.array(dtype=wp.vec2),
-        boundary_particles_3d: wp.array(dtype=wp.vec3),
+        boundary_particles: wp.array(dtype=wp.vec3),
         nx: int,
         ny: int,
         dx: float,
@@ -112,15 +108,13 @@ def init_leapfrog(
             base = (kernel_scale + nx) * (ny + 2 * kernel_scale) - nx * ny
             index = base + (i - kernel_scale - nx) * (ny + 2 * kernel_scale) + j
 
-        boundary_particles[index] = p
-        boundary_particles_3d[index] = wp.vec3(p.x, p.y, 0.0)
+        boundary_particles[index] = to3d(p)
 
     wp.launch(
         _init_leapfrog_particles,
         dim=(init_nx, init_ny),
         inputs=[
             particles,
-            particles_3d,
             velocities,
             init_ny,
             dx,
@@ -132,7 +126,6 @@ def init_leapfrog(
         dim=(init_nx + 2 * kernel_scale, init_ny + 2 * kernel_scale),
         inputs=[
             boundary_particles,
-            boundary_particles_3d,
             init_nx,
             init_ny,
             dx,
