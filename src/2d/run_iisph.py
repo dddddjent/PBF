@@ -11,6 +11,7 @@ from util.io_util import dump_boundary_particles, remove_everything_in
 from util.logger import Logger
 from sim.init_conditions import init_leapfrog
 from sim.sph import get_initial_density
+from sim.poisson import PoissonSolver
 
 
 #################################### Init #####################################
@@ -77,12 +78,13 @@ boundary_particles = wp.zeros(
     (init_nx + 2 * kernel_scale) * (init_ny + 2 * kernel_scale) - init_nx * init_ny,
     dtype=wp.vec3,
 )
+pressures = wp.zeros(init_nx * init_ny, dtype=wp.float32)
+densities = wp.zeros(init_nx * init_ny, dtype=wp.float32)
 
 hash_grid = wp.HashGrid(dim_x=grid_nx, dim_y=grid_ny, dim_z=1)
 hash_grid_boundary = wp.HashGrid(
     dim_x=grid_nx + 2 * kernel_scale, dim_y=grid_ny + 2 * kernel_scale, dim_z=1
 )
-
 
 # for visualization
 grid_vorticities = wp.zeros(shape=(grid_nx, grid_ny), dtype=float)
@@ -128,7 +130,18 @@ def main():
             particles, hash_grid, boundary_particles, hash_grid_boundary, kernel_radius
         )
     )
-    # TODO: solve possion
+    densities = wp.full(value=d0, shape=init_nx * init_ny, dtype=wp.float32)
+    solver = PoissonSolver(
+        hash_grid,
+        boundary_particles,
+        hash_grid_boundary,
+        init_nx * init_ny,
+        kernel_radius,
+        d0,
+        1e-4,
+    )
+    solver.solve(particles, velocities, pressures, densities, 0.0)
+
     dump_boundary_particles(particles_dir, particles, boundary_particles)
     dump_data()
 
