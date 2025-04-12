@@ -1,6 +1,6 @@
 import warp as wp
 from sim.kernel_function import W
-from util.warp_util import to2d
+from util.warp_util import to2d, to3d
 
 
 def get_initial_density(
@@ -54,3 +54,15 @@ def get_initial_density(
         ],
     )
     return wp.float32(density.numpy()[0])
+
+
+@wp.kernel
+def forward_euler_advection(
+    particles: wp.array(dtype=wp.vec3),
+    velocities: wp.array(dtype=wp.vec2),
+    dt: float,
+):
+    i = wp.tid()
+    p = particles[i]
+    v = velocities[i]
+    particles[i] = to3d(to2d(p) + dt * v)

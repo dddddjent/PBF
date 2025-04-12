@@ -10,7 +10,7 @@ import util.io_util as io_util
 from util.io_util import dump_boundary_particles, remove_everything_in
 from util.logger import Logger
 from sim.init_conditions import init_leapfrog
-from sim.sph import get_initial_density
+from sim.sph import get_initial_density, forward_euler_advection
 from sim.poisson import PoissonSolver
 
 
@@ -92,7 +92,7 @@ grid_velocities = wp.zeros(shape=(grid_nx, grid_ny), dtype=wp.vec2)
 ################################################################################
 
 
-def dump_data():
+def dump_data(frame_idx):
     io_util.to_output_format(
         particles,
         velocities,
@@ -109,7 +109,15 @@ def dump_data():
         particles,
         grid_velocities,
         grid_vorticities,
-        0,
+        frame_idx,
+    )
+
+
+def advection(dt):
+    wp.launch(
+        forward_euler_advection,
+        dim=init_nx * init_ny,
+        inputs=[particles, velocities, dt],
     )
 
 
@@ -138,12 +146,23 @@ def main():
         init_nx * init_ny,
         kernel_radius,
         d0,
-        1e-4,
+        1e-3,
+        100,
     )
     solver.solve(particles, velocities, pressures, densities, 0.0)
 
     dump_boundary_particles(particles_dir, particles, boundary_particles)
-    dump_data()
+    dump_data(0)
+
+    substeps = 10
+    curr_dt = visualize_dt / substeps
+    for frame in range(from_frame + 1, total_frames + 1):
+        for _ in range(substeps):
+            advection(curr_dt)
+            hash_grid.build(points=particles, radius=kernel_radius)
+            solver.solve(particles, velocities, pressures, densities, curr_dt)
+        print(frame)
+        dump_data(frame)
 
 
 if __name__ == "__main__":

@@ -14,6 +14,7 @@ class PoissonSolver:
         kernel_radius: float,
         d0: float,  # initial density
         error_tolerance: float = 1e-4,
+        max_iterations: int = 100,
     ):
         self.particle_grid = particle_grid
         self.boundary_particles = boundary_particles
@@ -22,6 +23,7 @@ class PoissonSolver:
         self.kernel_radius = kernel_radius
         self.d0 = d0
         self.error_tolerance = error_tolerance
+        self.max_iterations = max_iterations
 
         self.aii = wp.zeros(n_particles, dtype=wp.float32)  # a_ii in A
         self.dii = wp.zeros(n_particles, dtype=wp.vec2)
@@ -63,15 +65,15 @@ class PoissonSolver:
                     gradW(x_i_neighbor, kernel_radius),
                 )
 
-        query = wp.hash_grid_query(boundary_particle_grid, pos, kernel_radius)
-        query_idx = int(0)
-        while wp.hash_grid_query_next(query, query_idx):
-            x_i_neighbor = to2d(pos - boundary_particles[query_idx])
-            if wp.length(x_i_neighbor) < kernel_radius:
-                delta_density += 1.0 * wp.dot(
-                    (velocities[i] - wp.vec2(0.0, 0.0)),
-                    gradW(x_i_neighbor, kernel_radius),
-                )
+        # query = wp.hash_grid_query(boundary_particle_grid, pos, kernel_radius)
+        # query_idx = int(0)
+        # while wp.hash_grid_query_next(query, query_idx):
+        #     x_i_neighbor = to2d(pos - boundary_particles[query_idx])
+        #     if wp.length(x_i_neighbor) < kernel_radius:
+        #         delta_density += 1.0 * wp.dot(
+        #             (velocities[i] - wp.vec2(0.0, 0.0)),
+        #             gradW(x_i_neighbor, kernel_radius),
+        #         )
 
         delta_density *= dt
         s[i] = ignore_density_diff * (d0 - densities[i]) - delta_density
@@ -156,23 +158,23 @@ class PoissonSolver:
                     gradW(x_i_neighbor, kernel_radius),
                 )
 
-        query = wp.hash_grid_query(boundary_particle_grid, pos, kernel_radius)
-        query_idx = int(0)
-        while wp.hash_grid_query_next(query, query_idx):
-            x_i_neighbor = to2d(pos - boundary_particles[query_idx])
-            if wp.length(x_i_neighbor) < kernel_radius:
-                dji = (
-                    -dt
-                    * dt
-                    * 1.0
-                    / (densities[i] * densities[i] + 1e-7)
-                    * gradW(-x_i_neighbor, kernel_radius)
-                )
-
-                temp += 1.0 * wp.dot(
-                    (dii[i] - dji),
-                    gradW(x_i_neighbor, kernel_radius),
-                )
+        # query = wp.hash_grid_query(boundary_particle_grid, pos, kernel_radius)
+        # query_idx = int(0)
+        # while wp.hash_grid_query_next(query, query_idx):
+        #     x_i_neighbor = to2d(pos - boundary_particles[query_idx])
+        #     if wp.length(x_i_neighbor) < kernel_radius:
+        #         dji = (
+        #             -dt
+        #             * dt
+        #             * 1.0
+        #             / (densities[i] * densities[i] + 1e-7)
+        #             * gradW(-x_i_neighbor, kernel_radius)
+        #         )
+        #
+        #         temp += 1.0 * wp.dot(
+        #             (dii[i] - dji),
+        #             gradW(x_i_neighbor, kernel_radius),
+        #         )
 
         aii[i] = temp
 
@@ -213,17 +215,17 @@ class PoissonSolver:
                     * pressures[query_idx]
                 )
 
-        query = wp.hash_grid_query(boundary_particle_grid, pos, kernel_radius)
-        query_idx = int(0)
-        while wp.hash_grid_query_next(query, query_idx):
-            x_i_neighbor = to2d(pos - boundary_particles[query_idx])
-            if wp.length(x_i_neighbor) < kernel_radius:
-                temp += (
-                    1.0
-                    / (d0 * d0 + 1e-7)
-                    * gradW(x_i_neighbor, kernel_radius)
-                    * pressures[i]  # pressure mirror
-                )
+        # query = wp.hash_grid_query(boundary_particle_grid, pos, kernel_radius)
+        # query_idx = int(0)
+        # while wp.hash_grid_query_next(query, query_idx):
+        #     x_i_neighbor = to2d(pos - boundary_particles[query_idx])
+        #     if wp.length(x_i_neighbor) < kernel_radius:
+        #         temp += (
+        #             1.0
+        #             / (d0 * d0 + 1e-7)
+        #             * gradW(x_i_neighbor, kernel_radius)
+        #             * pressures[i]  # pressure mirror
+        #         )
 
         temp *= -dt * dt
         sum_dij_pj[i] = temp
@@ -259,20 +261,20 @@ class PoissonSolver:
                 )
                 mirror_pressure = pressures[query_idx]
 
-        query = wp.hash_grid_query(boundary_particle_grid, pos, kernel_radius)
-        query_idx = int(0)
-        while wp.hash_grid_query_next(query, query_idx):
-            if query_idx == i:
-                continue
-
-            x_i_neighbor = to2d(pos - boundary_particles[query_idx])
-            if wp.length(x_i_neighbor) < kernel_radius:
-                temp += (
-                    1.0
-                    / (d0 * d0 + 1e-7)
-                    * gradW(x_i_neighbor, kernel_radius)
-                    * mirror_pressure  # pressure mirror
-                )
+        # query = wp.hash_grid_query(boundary_particle_grid, pos, kernel_radius)
+        # query_idx = int(0)
+        # while wp.hash_grid_query_next(query, query_idx):
+        #     if query_idx == i:
+        #         continue
+        #
+        #     x_i_neighbor = to2d(pos - boundary_particles[query_idx])
+        #     if wp.length(x_i_neighbor) < kernel_radius:
+        #         temp += (
+        #             1.0
+        #             / (d0 * d0 + 1e-7)
+        #             * gradW(x_i_neighbor, kernel_radius)
+        #             * mirror_pressure  # pressure mirror
+        #         )
 
         temp *= -dt * dt
         sum_dij_pj_boundary[i] = temp
@@ -326,25 +328,25 @@ class PoissonSolver:
                     gradW(x_i_neighbor, kernel_radius),
                 )
 
-        query = wp.hash_grid_query(boundary_particle_grid, pos, kernel_radius)
-        query_idx = int(0)
-        while wp.hash_grid_query_next(query, query_idx):
-            x_i_neighbor = to2d(pos - boundary_particles[query_idx])
-            if wp.length(x_i_neighbor) < kernel_radius:
-                dji = (
-                    -dt
-                    * dt
-                    * 1.0
-                    / (densities[i] * densities[i] + 1e-7)
-                    * gradW(-x_i_neighbor, kernel_radius)
-                )
-                temp += 1.0 * wp.dot(
-                    sum_dij_pj[i]
-                    - dii[i] * pressures[i]  # pressure mirror
-                    - sum_dij_pj_boundary[query_idx]
-                    + dji * pressures[i],
-                    gradW(x_i_neighbor, kernel_radius),
-                )
+        # query = wp.hash_grid_query(boundary_particle_grid, pos, kernel_radius)
+        # query_idx = int(0)
+        # while wp.hash_grid_query_next(query, query_idx):
+        #     x_i_neighbor = to2d(pos - boundary_particles[query_idx])
+        #     if wp.length(x_i_neighbor) < kernel_radius:
+        #         dji = (
+        #             -dt
+        #             * dt
+        #             * 1.0
+        #             / (densities[i] * densities[i] + 1e-7)
+        #             * gradW(-x_i_neighbor, kernel_radius)
+        #         )
+        #         temp += 1.0 * wp.dot(
+        #             sum_dij_pj[i]
+        #             - dii[i] * pressures[i]  # pressure mirror
+        #             - sum_dij_pj_boundary[query_idx]
+        #             + dji * pressures[i],
+        #             gradW(x_i_neighbor, kernel_radius),
+        #         )
 
         pressure_tmp[i] += w / (aii[i] + 1e-7) * (s[i] - temp)
         pressure_tmp[i] = wp.max(pressure_tmp[i], 0.0)
@@ -387,14 +389,14 @@ class PoissonSolver:
                     * gradW(x_i_neighbor, kernel_radius)
                 )
 
-        query = wp.hash_grid_query(boundary_particle_grid, pos, kernel_radius)
-        query_idx = int(0)
-        while wp.hash_grid_query_next(query, query_idx):
-            x_i_neighbor = to2d(pos - boundary_particles[query_idx])
-            if wp.length(x_i_neighbor) < kernel_radius:
-                grad_p += (
-                    densities[i] * 1.0 * 2.0 * pi * gradW(x_i_neighbor, kernel_radius)
-                )
+        # query = wp.hash_grid_query(boundary_particle_grid, pos, kernel_radius)
+        # query_idx = int(0)
+        # while wp.hash_grid_query_next(query, query_idx):
+        #     x_i_neighbor = to2d(pos - boundary_particles[query_idx])
+        #     if wp.length(x_i_neighbor) < kernel_radius:
+        #         grad_p += (
+        #             densities[i] * 1.0 * 2.0 * pi * gradW(x_i_neighbor, kernel_radius)
+        #         )
 
         velocities[i] += -dt * grad_p / (densities[i] + 1e-7)
 
@@ -449,7 +451,6 @@ class PoissonSolver:
                 self.dii,
             ],
         )
-        print(self.dii)
         wp.launch(
             self._compute_aii,
             dim=self.n_particles,
@@ -473,8 +474,7 @@ class PoissonSolver:
 
         iter = 0
         error = 10000
-        while iter < 20:
-            # while iter < 0:
+        while iter < self.max_iterations and error > self.error_tolerance:
             wp.launch(
                 self._compute_sum_dij_pj,
                 dim=self.n_particles,
@@ -532,10 +532,9 @@ class PoissonSolver:
             )
             wp.copy(pressures, self.pressure_tmp, count=self.n_particles)
             error = wp.utils.array_sum(self.err) / self.n_particles
-            print(error)
-            print(pressures)
             iter += 1
-        print("total iter: ", iter)
+
+        print(f"total iter: {iter}, final error: {error}")
         wp.launch(
             self._update_velocities,
             dim=self.n_particles,
