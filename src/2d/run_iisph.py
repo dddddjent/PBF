@@ -10,6 +10,7 @@ import util.io_util as io_util
 from util.io_util import dump_boundary_particles, remove_everything_in
 from util.logger import Logger
 from sim.init_conditions import init_leapfrog
+from sim.sph import get_initial_density
 
 
 #################################### Init #####################################
@@ -120,9 +121,14 @@ def main():
         dx,
         kernel_scale,
     )
-    # solve possion
     hash_grid.build(points=particles, radius=kernel_radius)
     hash_grid_boundary.build(points=boundary_particles, radius=kernel_radius)
+    d0 = wp.constant(
+        get_initial_density(
+            particles, hash_grid, boundary_particles, hash_grid_boundary, kernel_radius
+        )
+    )
+    # TODO: solve possion
     dump_boundary_particles(particles_dir, particles, boundary_particles)
     dump_data()
 
