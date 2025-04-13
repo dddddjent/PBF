@@ -66,3 +66,32 @@ def forward_euler_advection(
     p = particles[i]
     v = velocities[i]
     particles[i] = to3d(to2d(p) + dt * v)
+
+
+@wp.kernel
+def update_density(
+    particles: wp.array(dtype=wp.vec3),
+    particle_grid: wp.uint64,
+    boundary_particles: wp.array(dtype=wp.vec3),
+    boundary_particle_grid: wp.uint64,
+    kernel_radius: float,
+    densities: wp.array(dtype=float),
+):
+    i = wp.tid()
+
+    p = particles[i]
+    densities[0] = wp.float32(0.0)
+
+    query = wp.hash_grid_query(particle_grid, p, kernel_radius)
+    query_idx = int(0)
+    while wp.hash_grid_query_next(query, query_idx):
+        x_p_neighbor = to2d(p - particles[query_idx])
+        if wp.length(x_p_neighbor) < kernel_radius:
+            densities[i] += W(x_p_neighbor, kernel_radius) * 1.0
+
+    # query = wp.hash_grid_query(boundary_particle_grid, p, kernel_radius)
+    # query_idx = int(0)
+    # while wp.hash_grid_query_next(query, query_idx):
+    #     x_p_neighbor = to2d(p - boundary_particles[query_idx])
+    #     if wp.length(x_p_neighbor) < kernel_radius:
+    #         densities[i] += W(x_p_neighbor, kernel_radius) * 1.0

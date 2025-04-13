@@ -154,7 +154,7 @@ class PoissonSolver:
                 )
 
                 temp += 1.0 * wp.dot(
-                    (dii[i] - dji),
+                    dii[i] - dji,
                     gradW(x_i_neighbor, kernel_radius),
                 )
 
@@ -211,8 +211,8 @@ class PoissonSolver:
                 temp += (
                     1.0
                     / (densities[query_idx] * densities[query_idx] + 1e-7)
-                    * gradW(x_i_neighbor, kernel_radius)
                     * pressures[query_idx]
+                    * gradW(x_i_neighbor, kernel_radius)
                 )
 
         # query = wp.hash_grid_query(boundary_particle_grid, pos, kernel_radius)
@@ -349,6 +349,7 @@ class PoissonSolver:
         #         )
 
         pressure_tmp[i] += w / (aii[i] + 1e-7) * (s[i] - temp)
+        # pressure_tmp[i] += w / (aii[i]) * (s[i] - temp)
         pressure_tmp[i] = wp.max(pressure_tmp[i], 0.0)
         err[i] = wp.abs(temp + aii[i] * pressures[i] - s[i]) / d0
 
@@ -507,6 +508,9 @@ class PoissonSolver:
                     self.sum_dij_pj_boundary,
                 ],
             )
+            print("aii: ", self.aii)
+            print("dii: ", self.dii)
+            print("sum: ", self.sum_dij_pj)
             wp.launch(
                 self._compute_new_pressure_err,
                 dim=self.n_particles,
@@ -533,6 +537,8 @@ class PoissonSolver:
             wp.copy(pressures, self.pressure_tmp, count=self.n_particles)
             error = wp.utils.array_sum(self.err) / self.n_particles
             iter += 1
+            if iter == 3:
+                exit()
 
         print(f"total iter: {iter}, final error: {error}")
         wp.launch(

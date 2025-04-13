@@ -7,6 +7,7 @@ import warp as wp
 import numpy as np
 
 import util.io_util as io_util
+import sim.sph as sph
 from util.io_util import dump_boundary_particles, remove_everything_in
 from util.logger import Logger
 from sim.init_conditions import init_leapfrog
@@ -22,7 +23,7 @@ parser.add_argument(
 )
 parser.add_argument("--CFL", help="CFL number", type=float, default=0.5)
 parser.add_argument("--from_frame", help="Start frame", type=int, default=0)
-parser.add_argument("--total_frames", help="Total frames", type=int, default=4000)
+parser.add_argument("--total_frames", help="Total frames", type=int, default=1)
 args = parser.parse_args()
 
 visualize_dt = args.visualize_dt
@@ -121,6 +122,21 @@ def advection(dt):
     )
 
 
+def update_density():
+    wp.launch(
+        sph.update_density,
+        dim=init_nx * init_ny,
+        inputs=[
+            particles,
+            hash_grid.id,
+            boundary_particles,
+            hash_grid_boundary.id,
+            kernel_radius,
+            densities,
+        ],
+    )
+
+
 def main():
     init_leapfrog(
         particles,
@@ -138,7 +154,7 @@ def main():
             particles, hash_grid, boundary_particles, hash_grid_boundary, kernel_radius
         )
     )
-    densities = wp.full(value=d0, shape=init_nx * init_ny, dtype=wp.float32)
+    update_density()
     solver = PoissonSolver(
         hash_grid,
         boundary_particles,
@@ -149,7 +165,7 @@ def main():
         1e-3,
         100,
     )
-    solver.solve(particles, velocities, pressures, densities, 0.0)
+    # solver.solve(particles, velocities, pressures, densities, 0.0)
 
     dump_boundary_particles(particles_dir, particles, boundary_particles)
     dump_data(0)
@@ -159,6 +175,7 @@ def main():
     for frame in range(from_frame + 1, total_frames + 1):
         for _ in range(substeps):
             advection(curr_dt)
+            update_density()
             hash_grid.build(points=particles, radius=kernel_radius)
             solver.solve(particles, velocities, pressures, densities, curr_dt)
         print(frame)

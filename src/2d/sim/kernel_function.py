@@ -15,6 +15,7 @@ def W(r: float, kernel_radius: float = 1.0) -> float:
 
     return 0.0
 
+
 @wp.func
 def W(r: wp.vec2, kernel_radius: float = 1.0) -> float:
     sigma = 40.0 / (7.0 * wp.PI * kernel_radius**2.0)
@@ -29,6 +30,7 @@ def W(r: wp.vec2, kernel_radius: float = 1.0) -> float:
     return 0.0
 
 
+# to i in r = x_i - x_j
 @wp.func
 def gradW(r: wp.vec2, kernel_radius: float = 1.0) -> wp.vec2:
     sigma = 40.0 / (7.0 * wp.PI * kernel_radius**2.0)
@@ -46,6 +48,8 @@ def gradW(r: wp.vec2, kernel_radius: float = 1.0) -> wp.vec2:
         return sigma * (-6.0 * (1.0 - q) * (1.0 - q)) * grad_q
 
     return wp.vec2()
+
+
 #
 #
 # @wp.func
