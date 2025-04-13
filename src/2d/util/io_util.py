@@ -110,7 +110,6 @@ def dump_data(
 
     fig = plt.figure(figsize=(30, 30))
     ax = fig.add_subplot()
-    ax.set_axis_off()
     plt.scatter(pos_cpu_x, pos_cpu_y, s=3)
     plt.savefig(os.path.join(particles_dir, f"particles_{frame_idx:04d}.png"))
     plt.close(fig)
@@ -151,7 +150,6 @@ def dump_boundary_particles(
 
     fig = plt.figure(figsize=(20, 20))
     ax = fig.add_subplot()
-    ax.set_axis_off()
 
     pos_cpu = boundary_particles.numpy()
     pos_cpu_x, pos_cpu_y = pos_cpu[:, 0], pos_cpu[:, 1]
@@ -159,7 +157,70 @@ def dump_boundary_particles(
 
     pos_cpu = paricles.numpy()
     pos_cpu_x, pos_cpu_y = pos_cpu[:, 0], pos_cpu[:, 1]
-    plt.scatter(pos_cpu_x, pos_cpu_y, s=3, color="blue")
+    plt.scatter(pos_cpu_x, pos_cpu_y, s=4, color="blue")
 
     plt.savefig(os.path.join(particles_dir, "boundary_particles.png"))
+    plt.close(fig)
+
+
+def debug_particle_field(
+    particles_dir: str,
+    paricles: wp.array(dtype=wp.vec3),
+    field: wp.array(dtype=float),
+    name: str,
+    figsize: tuple = (25, 20),
+):
+    wp.synchronize()
+
+    fig = plt.figure(figsize=figsize)
+    ax = fig.add_subplot()
+
+    pos_cpu = paricles.numpy()
+    pos_cpu_x, pos_cpu_y = pos_cpu[:, 0], pos_cpu[:, 1]
+    values = field.numpy()
+    scatter = plt.scatter(pos_cpu_x, pos_cpu_y, s=3, c=values, cmap="jet")
+    scatter.set_clim(values.min(), values.max())
+    plt.colorbar()
+
+    plt.savefig(os.path.join(particles_dir, f"{name}.png"))
+    plt.close(fig)
+
+
+def debug_particle_vector_field(
+    particles_dir: str,
+    paricles: wp.array(dtype=wp.vec3),
+    field: wp.array(dtype=wp.vec2),
+    name: str,
+    figsize: tuple = (45, 40),
+    normalize: bool = True,
+):
+    wp.synchronize()
+
+    fig = plt.figure(figsize=figsize)
+    ax = fig.add_subplot()
+
+    pos_cpu = paricles.numpy()
+    pos_cpu_x, pos_cpu_y = pos_cpu[:, 0], pos_cpu[:, 1]
+    values = field.numpy()
+    norms = np.linalg.norm(values, axis=1, keepdims=True)
+    norms[norms == 0] = 1e-11
+    if normalize:
+        values /= norms
+    values_x, values_y = values[:, 0], values[:, 1]
+    quiv = plt.quiver(
+        pos_cpu_x,
+        pos_cpu_y,
+        values_x,
+        values_y,
+        norms,
+        angles="uv",
+        cmap="jet",
+    )
+    quiv.set_clim(
+        vmin=norms.min(),
+        vmax=norms.max(),
+    )
+    plt.colorbar()
+
+    plt.savefig(os.path.join(particles_dir, f"{name}.png"))
     plt.close(fig)

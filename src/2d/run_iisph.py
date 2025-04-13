@@ -8,10 +8,15 @@ import numpy as np
 
 import util.io_util as io_util
 import sim.sph as sph
-from util.io_util import dump_boundary_particles, remove_everything_in
+from util.io_util import (
+    dump_boundary_particles,
+    remove_everything_in,
+    debug_particle_field,
+    debug_particle_vector_field,
+)
 from util.logger import Logger
 from sim.init_conditions import init_leapfrog
-from sim.sph import get_initial_density, forward_euler_advection
+from sim.sph import get_initial_density, forward_euler_advection, apply_gravity
 from sim.poisson import PoissonSolver
 
 
@@ -23,7 +28,7 @@ parser.add_argument(
 )
 parser.add_argument("--CFL", help="CFL number", type=float, default=0.5)
 parser.add_argument("--from_frame", help="Start frame", type=int, default=0)
-parser.add_argument("--total_frames", help="Total frames", type=int, default=1)
+parser.add_argument("--total_frames", help="Total frames", type=int, default=4000)
 args = parser.parse_args()
 
 visualize_dt = args.visualize_dt
@@ -69,6 +74,7 @@ wp.set_device("cuda:0")
 wp.config.mode = "debug"
 wp.config.verify_cuda = True
 wp.config.verify_fp = True
+# wp.config.cache_kernels = False
 wp.init()
 ################################################################################
 
@@ -162,22 +168,35 @@ def main():
         init_nx * init_ny,
         kernel_radius,
         d0,
-        1e-3,
-        100,
+        1e-4,
+        400,
     )
-    # solver.solve(particles, velocities, pressures, densities, 0.0)
+    solver.solve(particles, velocities, pressures, densities, 0.0, -1)
+    # exit()
 
     dump_boundary_particles(particles_dir, particles, boundary_particles)
     dump_data(0)
+    # debug_particle_vector_field("./", particles, velocities, "velocities", normalize=False)
+    # debug_particle_field("./", particles, densities, "densities")
 
     substeps = 10
     curr_dt = visualize_dt / substeps
     for frame in range(from_frame + 1, total_frames + 1):
-        for _ in range(substeps):
+        for substep_idx in range(substeps):
             advection(curr_dt)
+            # wp.launch(
+            #     apply_gravity,
+            #     dim=init_nx * init_ny,
+            #     inputs=[velocities, curr_dt],
+            # )
             update_density()
+            debug_particle_field(
+                "./", particles, densities, f"densities-{frame}-{substep_idx}"
+            )
             hash_grid.build(points=particles, radius=kernel_radius)
-            solver.solve(particles, velocities, pressures, densities, curr_dt)
+            solver.solve(
+                particles, velocities, pressures, densities, curr_dt, substep_idx
+            )
         print(frame)
         dump_data(frame)
 

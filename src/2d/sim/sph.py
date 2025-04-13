@@ -80,7 +80,7 @@ def update_density(
     i = wp.tid()
 
     p = particles[i]
-    densities[0] = wp.float32(0.0)
+    densities[i] = wp.float32(0.0)
 
     query = wp.hash_grid_query(particle_grid, p, kernel_radius)
     query_idx = int(0)
@@ -95,3 +95,12 @@ def update_density(
     #     x_p_neighbor = to2d(p - boundary_particles[query_idx])
     #     if wp.length(x_p_neighbor) < kernel_radius:
     #         densities[i] += W(x_p_neighbor, kernel_radius) * 1.0
+
+
+@wp.kernel
+def apply_gravity(
+    velocities: wp.array(dtype=wp.vec2),
+    dt: float,
+):
+    i = wp.tid()
+    velocities[i] += dt * wp.vec2(0.0, -9.8)
