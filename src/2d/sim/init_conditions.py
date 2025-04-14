@@ -245,17 +245,18 @@ def init_liquid(
     boundary_particles: wp.array(dtype=wp.vec3),
     init_nx: int,
     init_ny: int,
+    n_particles: int,
     dx: float,
     kernel_scale: int,
-):
-    assert particles.shape == (init_nx * init_ny,)
-    assert velocities.shape == (init_nx * init_ny,)
-    assert boundary_particles.shape == (
-        (init_nx + 2 * kernel_scale) * (init_ny + 2 * kernel_scale) - init_nx * init_ny,
-    )
+) -> wp.array(dtype=wp.vec3):
+    """
+    return the boundary_particles
+    """
+    assert particles.shape == (n_particles,)
+    assert velocities.shape == (n_particles,)
 
     @wp.kernel
-    def _init_leapfrog_particles(
+    def _init_fluid_particles(
         particles: wp.array(dtype=wp.vec3),
         velocities: wp.array(dtype=wp.vec2),
         ny: int,
@@ -264,53 +265,53 @@ def init_liquid(
         i, j = wp.tid()
         p_idx = i * ny + j  # particle index
 
-        p = wp.vec2(wp.float32(i), wp.float32(j)) * 0.5 / 128.0 + wp.vec2(0.25, 0.5)
+        p = dx * wp.vec2(wp.float32(i), wp.float32(j)) + wp.vec2(5.0, 5.0)
         particles[p_idx] = to3d(p)
 
-        velocities[p_idx] = wp.vec2()
+        velocities[p_idx] = wp.vec2(0.0, 0.0)
 
-    # @wp.kernel
-    # def _init_leapfrog_boundary_particles(
-    #     boundary_particles: wp.array(dtype=wp.vec3),
-    #     nx: int,
-    #     ny: int,
-    #     dx: float,
-    #     kernel_scale: int,
-    # ):
-    #     i, j = wp.tid()
-    #     if (
-    #         i >= kernel_scale
-    #         and i < nx + kernel_scale
-    #         and j >= kernel_scale
-    #         and j < ny + kernel_scale
-    #     ):
-    #         return
-    #
-    #     p = (
-    #         wp.vec2(
-    #             wp.float32(i - kernel_scale),
-    #             wp.float32(j - kernel_scale),
-    #         )
-    #         * dx
-    #     )
-    #     index = 0
-    #     if i < kernel_scale:
-    #         index = i * (ny + 2 * kernel_scale) + j
-    #     elif i >= kernel_scale and i < nx + kernel_scale:
-    #         base = kernel_scale * (ny + 2 * kernel_scale)
-    #         if j < kernel_scale:
-    #             index = base + (i - kernel_scale) * 2 * kernel_scale + j
-    #         else:
-    #             index = base + (i - kernel_scale) * 2 * kernel_scale + j - ny
-    #     else:
-    #         base = (kernel_scale + nx) * (ny + 2 * kernel_scale) - nx * ny
-    #         index = base + (i - kernel_scale - nx) * (ny + 2 * kernel_scale) + j
-    #
-    #     boundary_particles[index] = to3d(p)
+    @wp.kernel
+    def _init_boundary_particles(
+        boundary_particles: wp.array(dtype=wp.vec3),
+        nx: int,
+        ny: int,
+        dx: float,
+        kernel_scale: int,
+    ):
+        i, j = wp.tid()
+        if (
+            i >= kernel_scale
+            and i < nx + kernel_scale
+            and j >= kernel_scale
+            and j < ny + kernel_scale
+        ):
+            return
+
+        p = (
+            wp.vec2(
+                wp.float32(i - kernel_scale),
+                wp.float32(j - kernel_scale),
+            )
+            * dx
+        )
+        index = 0
+        if i < kernel_scale:
+            index = i * (ny + 2 * kernel_scale) + j
+        elif i >= kernel_scale and i < nx + kernel_scale:
+            base = kernel_scale * (ny + 2 * kernel_scale)
+            if j < kernel_scale:
+                index = base + (i - kernel_scale) * 2 * kernel_scale + j
+            else:
+                index = base + (i - kernel_scale) * 2 * kernel_scale + j - ny
+        else:
+            base = (kernel_scale + nx) * (ny + 2 * kernel_scale) - nx * ny
+            index = base + (i - kernel_scale - nx) * (ny + 2 * kernel_scale) + j
+
+        boundary_particles[index] = to3d(p)
 
     wp.launch(
-        _init_leapfrog_particles,
-        dim=(128, 128),
+        _init_fluid_particles,
+        dim=(init_nx, init_ny),
         inputs=[
             particles,
             velocities,
@@ -319,14 +320,27 @@ def init_liquid(
         ],
     )
 
-    # wp.launch(
-    #     _init_leapfrog_boundary_particles,
-    #     dim=(init_nx + 2 * kernel_scale, init_ny + 2 * kernel_scale),
-    #     inputs=[
-    #         boundary_particles,
-    #         init_nx,
-    #         init_ny,
-    #         dx,
-    #         kernel_scale,
-    #     ],
-    # )
+    wp.launch(
+        _init_boundary_particles,
+        dim=(init_nx * 2 + 2 * kernel_scale, init_ny * 2 + 2 * kernel_scale),
+        inputs=[
+            boundary_particles,
+            init_nx * 2,
+            init_ny * 2,
+            dx,
+            kernel_scale,
+        ],
+    )
+
+    new_boundary_particles = wp.zeros(
+        shape=(init_ny * 2 + 2 * kernel_scale) * 2 * kernel_scale
+        + 2 * kernel_scale * init_nx * 2,
+        dtype=wp.vec3,
+    )
+    wp.copy(
+        new_boundary_particles,
+        boundary_particles,
+        count=new_boundary_particles.shape[0],
+    )
+
+    return new_boundary_particles

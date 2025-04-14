@@ -61,11 +61,12 @@ def forward_euler_advection(
     particles: wp.array(dtype=wp.vec3),
     velocities: wp.array(dtype=wp.vec2),
     dt: float,
+    particles_out: wp.array(dtype=wp.vec3),
 ):
     i = wp.tid()
     p = particles[i]
     v = velocities[i]
-    particles[i] = to3d(to2d(p) + dt * v)
+    particles_out[i] = to3d(to2d(p) + dt * v)
 
 
 @wp.kernel
@@ -106,21 +107,25 @@ def apply_gravity(
     velocities[i] += dt * wp.vec2(0.0, -9.8)
 
 
+# compute velocity and enforce boundary
 @wp.kernel
-def enforce_boundary(
-    particles: wp.array(dtype=wp.vec3), velocities: wp.array(dtype=wp.vec2), dt: float
+def enforce_boundary_compute_v(
+    particles: wp.array(dtype=wp.vec3),
+    particles_pred: wp.array(dtype=wp.vec3),
+    velocities: wp.array(dtype=wp.vec2),
+    width: float,
+    height: float,
+    dt: float,
 ):
     i = wp.tid()
-    p = particles[i]
-    v = velocities[i]
-    p1 = to2d(p) + dt * v
+    p = particles_pred[i]
 
-    if p1.x < 0.0:
-        p1.x = 0.0
-    if p1.x > 1.0:
-        p1.x = 1.0
-    if p1.y < 0.0:
-        p1.y = 0.0
-    if p1.y > 1.5:
-        p1.y = 1.5
-    velocities[i] = (p1 - to2d(p)) / dt
+    if p.x < 0.0:
+        p.x = 0.0
+    if p.x > width:
+        p.x = width
+    if p.y < 0.0:
+        p.y = 0.0
+    if p.y > height:
+        p.y = height
+    velocities[i] = to2d(p - particles[i]) / dt

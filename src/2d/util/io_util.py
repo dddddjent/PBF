@@ -145,6 +145,7 @@ def dump_boundary_particles(
     particles_dir: str,
     paricles: wp.array(dtype=wp.vec3),
     boundary_particles: wp.array(dtype=wp.vec3),
+    frame_idx: int = -1,
 ):
     wp.synchronize()
 
@@ -159,7 +160,7 @@ def dump_boundary_particles(
     pos_cpu_x, pos_cpu_y = pos_cpu[:, 0], pos_cpu[:, 1]
     plt.scatter(pos_cpu_x, pos_cpu_y, s=4, color="blue")
 
-    plt.savefig(os.path.join(particles_dir, "boundary_particles.png"))
+    plt.savefig(os.path.join(particles_dir, f"boundary_particles{frame_idx:04d}.png"))
     plt.close(fig)
 
 

@@ -7,6 +7,7 @@ import warp as wp
 import numpy as np
 
 import util.io_util as io_util
+from util.warp_util import to2d
 import sim.sph as sph
 from util.io_util import (
     dump_boundary_particles,
@@ -15,9 +16,14 @@ from util.io_util import (
     debug_particle_vector_field,
 )
 from util.logger import Logger
-from sim.init_conditions import init_leapfrog, init_single_vortex
-from sim.sph import get_initial_density, forward_euler_advection, apply_gravity
-from sim.poisson import IISPHPoissonSolver
+from sim.init_conditions import init_liquid
+from sim.sph import (
+    enforce_boundary_compute_v,
+    get_initial_density,
+    forward_euler_advection,
+    apply_gravity,
+)
+from sim.poisson import PBFPossionSolver
 
 
 #################################### Init #####################################
@@ -35,16 +41,18 @@ visualize_dt = args.visualize_dt
 CFL = args.CFL
 from_frame = args.from_frame
 total_frames = args.total_frames
-init_condition = "leapfrog"
-init_nx = wp.constant(256)
-init_ny = wp.constant(256)
+init_condition = "liquid"
+init_nx = 128
+init_ny = 128
+n_particles = init_nx * init_ny
 grid_nx = wp.constant(256)
 grid_ny = wp.constant(256)
-dx = wp.constant(1.0 / init_nx)
+dx = wp.constant(1.0)
+init_bounding_box = [[0.25, 0.5], [0.75, 1.0]]
 kernel_scale = int(3)
 kernel_radius = wp.constant(3.0 * dx)
 
-exp_name = init_condition + "-iisph"
+exp_name = init_condition + "-PBF"
 if args.name is None:
     exp_name += datetime.now().strftime("-%Y-%m-%d-%H-%M-%S")
 else:
@@ -79,18 +87,17 @@ wp.init()
 ################################################################################
 
 ################################## Variables #####################################
-particles = wp.zeros(init_nx * init_ny, dtype=wp.vec3)
-velocities = wp.zeros(init_nx * init_ny, dtype=wp.vec2)
-boundary_particles = wp.zeros(
-    (init_nx + 2 * kernel_scale) * (init_ny + 2 * kernel_scale) - init_nx * init_ny,
-    dtype=wp.vec3,
-)
-pressures = wp.zeros(init_nx * init_ny, dtype=wp.float32)
-# pressures = wp.full(init_nx * init_ny, 1000000.0, dtype=wp.float32)
-densities = wp.zeros(init_nx * init_ny, dtype=wp.float32)
+particles = wp.zeros(n_particles, dtype=wp.vec3)
+particles_pred = wp.zeros(n_particles, dtype=wp.vec3)
+velocities = wp.zeros(n_particles, dtype=wp.vec2)
+densities = wp.zeros(n_particles, dtype=wp.float32)
+lambdas = wp.zeros(n_particles, dtype=wp.float32)
+alphas = wp.full(n_particles, 1e-3, dtype=wp.float32)
+boundary_particles = wp.zeros(n_particles, dtype=wp.vec3)
+nb_particles = 0
 
-hash_grid = wp.HashGrid(dim_x=grid_nx, dim_y=grid_ny, dim_z=1)
-hash_grid_boundary = wp.HashGrid(
+particle_grid = wp.HashGrid(dim_x=grid_nx, dim_y=grid_ny, dim_z=1)
+boundary_grid = wp.HashGrid(
     dim_x=grid_nx + 2 * kernel_scale, dim_y=grid_ny + 2 * kernel_scale, dim_z=1
 )
 
@@ -107,7 +114,7 @@ def dump_data(frame_idx):
         grid_velocities,
         grid_vorticities,
         kernel_radius,
-        hash_grid,
+        particle_grid,
         dx,
     )
     io_util.dump_data(
@@ -121,23 +128,37 @@ def dump_data(frame_idx):
     )
 
 
-def advection(dt):
+def advection_predict(dt):
     wp.launch(
         forward_euler_advection,
-        dim=init_nx * init_ny,
-        inputs=[particles, velocities, dt],
+        dim=n_particles,
+        inputs=[particles, velocities, dt, particles_pred],
     )
+
+
+@wp.kernel
+def update_velocity(
+    particles: wp.array(dtype=wp.vec3),
+    particles_pred: wp.array(dtype=wp.vec3),
+    velocities: wp.array(dtype=wp.vec2),
+    dt: float,
+):
+    i = wp.tid()
+    p = particles_pred[i]
+    v = to2d(p - particles[i])
+    v = v / dt
+    velocities[i] = v
 
 
 def update_density():
     wp.launch(
         sph.update_density,
-        dim=init_nx * init_ny,
+        dim=n_particles,
         inputs=[
             particles,
-            hash_grid.id,
+            particle_grid.id,
             boundary_particles,
-            hash_grid_boundary.id,
+            boundary_grid.id,
             kernel_radius,
             densities,
         ],
@@ -145,61 +166,78 @@ def update_density():
 
 
 def main():
-    init_leapfrog(
-    # init_single_vortex(
+    global boundary_particles
+    boundary_particles = init_liquid(
         particles,
         velocities,
         boundary_particles,
         init_nx,
         init_ny,
+        n_particles,
         dx,
         kernel_scale,
     )
-    hash_grid.build(points=particles, radius=kernel_radius)
-    hash_grid_boundary.build(points=boundary_particles, radius=kernel_radius)
+    particle_grid.build(points=particles, radius=kernel_radius)
+    boundary_grid.build(points=boundary_particles, radius=kernel_radius)
     d0 = wp.constant(
         get_initial_density(
-            particles, hash_grid, boundary_particles, hash_grid_boundary, kernel_radius
-        ) * 1.0
+            particles,
+            particle_grid,
+            boundary_particles,
+            boundary_grid,
+            kernel_radius,
+        )
     )
     update_density()
-    solver = IISPHPoissonSolver(
-        hash_grid,
+    solver = PBFPossionSolver(
+        particle_grid,
         boundary_particles,
-        hash_grid_boundary,
-        init_nx * init_ny,
+        boundary_grid,
+        alphas,
+        n_particles,
         kernel_radius,
         d0,
-        1e-4,
-        40,
+        1e-3,
+        20,
+        (256.0, 256.0),
     )
-    # solver.solve(particles, velocities, pressures, densities, 0.0, -1)
 
     dump_boundary_particles(particles_dir, particles, boundary_particles)
-    dump_data(0)
-    # debug_particle_vector_field("./", particles, velocities, "velocities", normalize=False)
-    # debug_particle_field("./", particles, densities, "densities")
+    debug_particle_field("./", particles, densities, "densities-1")
 
-    substeps = 10
+    substeps = 5
     curr_dt = visualize_dt / substeps
     for frame in range(from_frame + 1, total_frames + 1):
         for substep_idx in range(substeps):
-            advection(curr_dt)
-            # wp.launch(
-            #     apply_gravity,
-            #     dim=init_nx * init_ny,
-            #     inputs=[velocities, curr_dt],
-            # )
-            update_density()
-            debug_particle_field(
-                "./", particles, densities, f"densities-{frame}-{substep_idx}"
+            wp.launch(
+                apply_gravity,
+                dim=init_nx * init_ny,
+                inputs=[velocities, curr_dt],
             )
-            hash_grid.build(points=particles, radius=kernel_radius)
+            advection_predict(curr_dt)
+            particle_grid.build(points=particles_pred, radius=kernel_radius)
             solver.solve(
-                particles, velocities, pressures, densities, curr_dt, substep_idx
+                particles_pred, velocities, densities, curr_dt, f"{frame}_{substep_idx}"
             )
+            wp.launch(
+                update_velocity,
+                dim=n_particles,
+                inputs=[particles, particles_pred, velocities, curr_dt],
+            )
+            wp.copy(particles, particles_pred, count=n_particles)
+
+        dump_boundary_particles(
+            particles_dir,
+            particles,
+            boundary_particles,
+            # frame * substeps + substep_idx,
+            frame,
+        )
+        # debug_particle_field(
+        #     "./", particles, densities, f"densities-{frame}-{substep_idx}"
+        # )
         print(frame)
-        dump_data(frame)
+        # dump_data(frame)
 
 
 if __name__ == "__main__":
