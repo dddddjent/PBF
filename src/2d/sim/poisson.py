@@ -646,7 +646,7 @@ class PBFPossionSolver:
         i = wp.tid()
         p = particles[i]
 
-        lambdas[i] = wp.dot(gradC[i], gradC[i])
+        temp = wp.dot(gradC[i], gradC[i])
 
         query = wp.hash_grid_query(particle_grid, p, kernel_radius * 2.0)
         query_idx = int(0)
@@ -656,9 +656,11 @@ class PBFPossionSolver:
             x_p_neighbor = to2d(p - particles[query_idx])
             if wp.length(x_p_neighbor) < kernel_radius * 2.0:
                 grad = -gradW(x_p_neighbor, kernel_radius) / d0
-                lambdas[i] += wp.dot(grad, grad)
+                temp += wp.dot(grad, grad)
 
-        lambdas[i] = -C[i] / (alphas[i] / (dt * dt) + lambdas[i])
+        lambdas[i] = lambdas[i] + (-C[i] - alphas[i] / (dt * dt) * lambdas[i]) / (
+            alphas[i] / (dt * dt) + temp
+        )
 
     @wp.kernel
     def update_positions(
@@ -712,6 +714,8 @@ class PBFPossionSolver:
         dt: float,
         debug_info: str = "",
     ):
+        lambdas = wp.zeros(self.n_particles, dtype=wp.float32)
+
         iter = 0
         while iter < self.max_iterations:
             self.particle_grid.build(points=particles, radius=self.kernel_radius)

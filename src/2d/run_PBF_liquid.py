@@ -198,14 +198,14 @@ def main():
         kernel_radius,
         d0,
         1e-3,
-        20,
+        60,
         (256.0, 256.0),
     )
 
     dump_boundary_particles(particles_dir, particles, boundary_particles)
     debug_particle_field("./", particles, densities, "densities-1")
 
-    substeps = 5
+    substeps = 2
     curr_dt = visualize_dt / substeps
     for frame in range(from_frame + 1, total_frames + 1):
         for substep_idx in range(substeps):
