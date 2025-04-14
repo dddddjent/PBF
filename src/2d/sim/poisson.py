@@ -817,4 +817,16 @@ class PBFPossionSolver:
             )
             error = wp.utils.array_sum(self.errors) / self.n_particles
             iter += 1
+        wp.launch(
+            sph.update_density,
+            dim=self.n_particles,
+            inputs=[
+                particles,
+                self.particle_grid.id,
+                self.boundary_particles,
+                self.boundary_particle_grid.id,
+                self.kernel_radius,
+                densities,
+            ],
+        )
         print(f"{debug_info}  iter: {iter}  error: {error}")

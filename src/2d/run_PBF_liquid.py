@@ -21,7 +21,7 @@ from sim.init_conditions import init_liquid
 from sim.sph import (
     get_initial_density,
     forward_euler_advection,
-    apply_gravity,
+    apply_acc,
 )
 from sim.poisson import PBFPossionSolver
 
@@ -98,6 +98,9 @@ alphas = wp.full(n_particles, 1e-3, dtype=wp.float32)
 boundary_particles = wp.zeros(n_particles, dtype=wp.vec3)
 nb_particles = 0
 
+acc_external = wp.zeros(n_particles, dtype=wp.vec2)
+vorticities = wp.zeros(n_particles, dtype=wp.float32)
+
 particle_grid = wp.HashGrid(dim_x=grid_nx, dim_y=grid_ny, dim_z=1)
 boundary_grid = wp.HashGrid(
     dim_x=grid_nx + 2 * kernel_scale, dim_y=grid_ny + 2 * kernel_scale, dim_z=1
@@ -167,6 +170,44 @@ def update_density():
     )
 
 
+def vorticity_confinement(strength=1.0):
+    wp.launch(
+        sph.compute_vorticity,
+        dim=n_particles,
+        inputs=[
+            particles,
+            particle_grid.id,
+            velocities,
+            kernel_radius,
+            vorticities,
+        ],
+    )
+    wp.launch(
+        sph.compute_vorticity_confinement_acc,
+        dim=n_particles,
+        inputs=[
+            particles,
+            particle_grid.id,
+            vorticities,
+            densities,
+            kernel_radius,
+            acc_external,
+            strength,
+        ],
+    )
+
+
+def apply_external_force(dt):
+    acc_external.zero_()
+
+    vorticity_confinement()
+    wp.launch(
+        apply_acc,
+        dim=init_nx * init_ny,
+        inputs=[velocities, acc_external, dt],
+    )
+
+
 def main():
     global boundary_particles
     boundary_particles = init_liquid(
@@ -212,11 +253,7 @@ def main():
     for frame in range(from_frame + 1, total_frames + 1):
         timer.reset()
         for substep_idx in range(substeps):
-            wp.launch(
-                apply_gravity,
-                dim=init_nx * init_ny,
-                inputs=[velocities, curr_dt],
-            )
+            apply_external_force(curr_dt)
             advection_predict(curr_dt)
             particle_grid.build(points=particles_pred, radius=kernel_radius)
             solver.solve(particles_pred, densities, curr_dt, f"{frame}_{substep_idx}")
@@ -226,7 +263,7 @@ def main():
                 inputs=[particles, particles_pred, velocities, curr_dt],
             )
             wp.copy(particles, particles_pred, count=n_particles)
-        
+
         print(f"frame: {frame}, {timer.elapsed()}")
 
         dump_boundary_particles(
@@ -235,6 +272,13 @@ def main():
             boundary_particles,
             # frame * substeps + substep_idx,
             frame,
+        )
+        debug_particle_field(
+            # "./", particles, densities, f"densities-{frame}-{substep_idx}"
+            "./",
+            particles,
+            vorticities,
+            f"vorticities-{frame}",
         )
         # debug_particle_field(
         #     # "./", particles, densities, f"densities-{frame}-{substep_idx}"

@@ -1,5 +1,5 @@
 import warp as wp
-from sim.kernel_function import W
+from sim.kernel_function import W, gradW
 from util.warp_util import to2d, to3d
 
 
@@ -99,10 +99,71 @@ def update_density(
 
 
 @wp.kernel
-def apply_gravity(
+def apply_acc(
     velocities: wp.array(dtype=wp.vec2),
+    acc: wp.array(dtype=wp.vec2),
     dt: float,
 ):
+    """apply gravity here"""
     i = wp.tid()
-    velocities[i] += dt * wp.vec2(0.0, -9.8)
+    velocities[i] += dt * (wp.vec2(0.0, -9.8) + acc[i])
 
+
+@wp.kernel
+def compute_vorticity(
+    particles: wp.array(dtype=wp.vec3),
+    particle_grid: wp.uint64,
+    velocities: wp.array(dtype=wp.vec2),
+    kernel_radius: float,
+    vorticities: wp.array(dtype=wp.float32),
+):
+    i = wp.tid()
+    p = particles[i]
+
+    vorticities[i] = wp.float32(0.0)
+
+    query = wp.hash_grid_query(particle_grid, p, kernel_radius * 2.0)
+    query_idx = int(0)
+    while wp.hash_grid_query_next(query, query_idx):
+        x_p_neighbor = to2d(p - particles[query_idx])
+        if wp.length(x_p_neighbor) < kernel_radius * 2.0:
+            grad = to3d(gradW(-x_p_neighbor, kernel_radius))
+            vij = to3d(velocities[i] - velocities[query_idx])
+            vorticities[i] += wp.cross(grad, vij).z
+
+
+@wp.kernel
+def compute_vorticity_confinement_acc(
+    particles: wp.array(dtype=wp.vec3),
+    particle_grid: wp.uint64,
+    vorticities: wp.array(dtype=wp.float32),
+    densities: wp.array(dtype=wp.float32),
+    kernel_radius: float,
+    acc: wp.array(dtype=wp.vec2),
+    strength: float = 1.0,
+):
+    i = wp.tid()
+    p = particles[i]
+
+    eta = wp.vec2(0.0, 0.0)
+
+    query = wp.hash_grid_query(particle_grid, p, kernel_radius * 2.0)
+    query_idx = int(0)
+    while wp.hash_grid_query_next(query, query_idx):
+        x_p_neighbor = to2d(p - particles[query_idx])
+        if wp.length(x_p_neighbor) < kernel_radius * 2.0:
+            eta += (
+                densities[i]
+                * (
+                    vorticities[i] / (densities[i] ** 2.0)
+                    + vorticities[query_idx] / (densities[query_idx] ** 2.0)
+                )
+                * gradW(x_p_neighbor, kernel_radius)
+            )
+    N = wp.vec2(0.0, 0.0)
+    if wp.length(eta) > 0.0:
+        N = wp.normalize(eta)
+
+    f = wp.cross(to3d(N), wp.vec3(0.0, 0.0, vorticities[i]))
+
+    acc[i] += strength * to2d(f) / densities[i]
