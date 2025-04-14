@@ -19,7 +19,6 @@ from util.io_util import (
 from util.logger import Logger
 from sim.init_conditions import init_liquid
 from sim.sph import (
-    enforce_boundary_compute_v,
     get_initial_density,
     forward_euler_advection,
     apply_gravity,
