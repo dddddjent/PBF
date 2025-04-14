@@ -198,7 +198,7 @@ def main():
         kernel_radius,
         d0,
         1e-2,
-        4000,
+        400,
         (256.0, 256.0),
     )
 
@@ -231,13 +231,13 @@ def main():
             # frame * substeps + substep_idx,
             frame,
         )
-        debug_particle_field(
-            # "./", particles, densities, f"densities-{frame}-{substep_idx}"
-            "./",
-            particles,
-            densities,
-            f"densities-{frame}",
-        )
+        # debug_particle_field(
+        #     # "./", particles, densities, f"densities-{frame}-{substep_idx}"
+        #     "./",
+        #     particles,
+        #     densities,
+        #     f"densities-{frame}",
+        # )
         print(frame)
 
 

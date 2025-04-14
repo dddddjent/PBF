@@ -583,6 +583,9 @@ class PBFPossionSolver:
         error_tolerance: float,
         max_iterations: int,
         boundary_size: tuple = (256.0, 256.0),
+        k_corr: float = -0.1,
+        q_corr: float = 0.2,
+        n_corr: float = 4.0,
     ):
         self.particle_grid = particle_grid
         self.boundary_particles = boundary_particles
@@ -593,6 +596,8 @@ class PBFPossionSolver:
         self.d0 = d0
         self.error_tolerance = error_tolerance
         self.max_iterations = max_iterations
+        self.boundary = wp.vec2(boundary_size[0], boundary_size[1])
+        self.corr_parameters = wp.vec3(k_corr, q_corr, n_corr)
 
         self.lambdas = wp.zeros(n_particles, dtype=wp.float32)
         self.particle_buffer = wp.zeros(n_particles, dtype=wp.vec3)
@@ -670,6 +675,7 @@ class PBFPossionSolver:
         lambdas: wp.array(dtype=wp.float32),
         d0: float,
         kernel_radius: float,
+        corr_parameters: wp.vec3,
         particles_out: wp.array(dtype=wp.vec3),
     ):
         i = wp.tid()
@@ -685,8 +691,16 @@ class PBFPossionSolver:
                 continue
             x_p_neighbor = to2d(p - particles[query_idx])
             if wp.length(x_p_neighbor) < kernel_radius * 2.0:
+                s_corr = (
+                    corr_parameters.x
+                    * (
+                        W(x_p_neighbor, kernel_radius)
+                        / W(corr_parameters.y * kernel_radius, kernel_radius)
+                    )
+                    ** corr_parameters.z
+                )
                 delta += (
-                    (lambdas[i] + lambdas[query_idx])
+                    (lambdas[i] + lambdas[query_idx] + s_corr)
                     * gradW(x_p_neighbor, kernel_radius)
                     / d0
                 )
@@ -694,17 +708,11 @@ class PBFPossionSolver:
         particles_out[i] = p + to3d(delta)
 
     @wp.kernel
-    def enforce_boundary(particles: wp.array(dtype=wp.vec3)):
+    def enforce_boundary(particles: wp.array(dtype=wp.vec3), boundary: wp.vec2):
         i = wp.tid()
         p = particles[i]
-        if p.x < 0.0:
-            p.x = 0.0
-        if p.x > 256.0:
-            p.x = 256.0
-        if p.y < 0.0:
-            p.y = 0.0
-        if p.y > 256.0:
-            p.y = 256.0
+        p.x = wp.max(0.0, wp.min(boundary.x, p.x))
+        p.y = wp.max(0.0, wp.min(boundary.y, p.y))
         particles[i] = p
 
     @wp.kernel
@@ -786,13 +794,14 @@ class PBFPossionSolver:
                     self.lambdas,
                     self.d0,
                     self.kernel_radius,
+                    self.corr_parameters,
                     self.particle_buffer,
                 ],
             )
             wp.launch(
                 self.enforce_boundary,
                 dim=self.n_particles,
-                inputs=[self.particle_buffer],
+                inputs=[self.particle_buffer, self.boundary],
             )
 
             wp.copy(particles, self.particle_buffer, count=self.n_particles)
