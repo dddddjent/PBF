@@ -7,6 +7,7 @@ import warp as wp
 import numpy as np
 
 import util.io_util as io_util
+from util.timer import Timer
 from util.warp_util import to2d
 import sim.sph as sph
 from util.io_util import (
@@ -77,6 +78,8 @@ particles_dir = "particles"
 particles_dir = os.path.join(logsdir, particles_dir)
 os.makedirs(particles_dir, exist_ok=True)
 shutil.copy(__file__, logsdir)
+
+timer = Timer()
 
 wp.set_device("cuda:0")
 wp.config.mode = "debug"
@@ -208,6 +211,7 @@ def main():
     substeps = 2
     curr_dt = visualize_dt / substeps
     for frame in range(from_frame + 1, total_frames + 1):
+        timer.reset()
         for substep_idx in range(substeps):
             wp.launch(
                 apply_gravity,
@@ -223,6 +227,8 @@ def main():
                 inputs=[particles, particles_pred, velocities, curr_dt],
             )
             wp.copy(particles, particles_pred, count=n_particles)
+        
+        print(f"frame: {frame}, {timer.elapsed()}")
 
         dump_boundary_particles(
             particles_dir,
@@ -238,7 +244,6 @@ def main():
         #     densities,
         #     f"densities-{frame}",
         # )
-        print(frame)
 
 
 if __name__ == "__main__":
