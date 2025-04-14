@@ -15,8 +15,13 @@ from util.io_util import (
     debug_particle_vector_field,
 )
 from util.logger import Logger
-from sim.init_conditions import init_leapfrog, init_single_vortex
-from sim.sph import get_initial_density, forward_euler_advection, apply_gravity
+from sim.init_conditions import init_liquid
+from sim.sph import (
+    enforce_boundary,
+    get_initial_density,
+    forward_euler_advection,
+    apply_gravity,
+)
 from sim.poisson import IISPHPoissonSolver
 
 
@@ -35,14 +40,16 @@ visualize_dt = args.visualize_dt
 CFL = args.CFL
 from_frame = args.from_frame
 total_frames = args.total_frames
-init_condition = "leapfrog"
-init_nx = wp.constant(256)
-init_ny = wp.constant(256)
+init_condition = "liquid"
+init_nx = 128
+init_ny = 128
+n_particles = init_nx * init_ny
 grid_nx = wp.constant(256)
 grid_ny = wp.constant(256)
-dx = wp.constant(1.0 / init_nx)
+dx = wp.constant(1.0 / grid_nx)
+init_bounding_box = [[0.25, 0.5], [0.75, 1.0]]
 kernel_scale = int(3)
-kernel_radius = wp.constant(3.0 * dx)
+kernel_radius = wp.constant(4.5 * dx)
 
 exp_name = init_condition + "-iisph"
 if args.name is None:
@@ -86,7 +93,6 @@ boundary_particles = wp.zeros(
     dtype=wp.vec3,
 )
 pressures = wp.zeros(init_nx * init_ny, dtype=wp.float32)
-# pressures = wp.full(init_nx * init_ny, 1000000.0, dtype=wp.float32)
 densities = wp.zeros(init_nx * init_ny, dtype=wp.float32)
 
 hash_grid = wp.HashGrid(dim_x=grid_nx, dim_y=grid_ny, dim_z=1)
@@ -145,8 +151,7 @@ def update_density():
 
 
 def main():
-    init_leapfrog(
-    # init_single_vortex(
+    init_liquid(
         particles,
         velocities,
         boundary_particles,
@@ -160,27 +165,32 @@ def main():
     d0 = wp.constant(
         get_initial_density(
             particles, hash_grid, boundary_particles, hash_grid_boundary, kernel_radius
-        ) * 1.0
+        )
     )
+    print("d0", float(d0))
     update_density()
+    print(densities.numpy()[128 * 64 : 128 * 64 + 20])
+    # exit()
     solver = IISPHPoissonSolver(
         hash_grid,
         boundary_particles,
         hash_grid_boundary,
-        init_nx * init_ny,
+        n_particles,
         kernel_radius,
         d0,
         1e-4,
-        40,
+        20,
     )
     # solver.solve(particles, velocities, pressures, densities, 0.0, -1)
 
-    dump_boundary_particles(particles_dir, particles, boundary_particles)
-    dump_data(0)
+    # dump_boundary_particles(particles_dir, particles, boundary_particles)
+    # dump_data(0)
     # debug_particle_vector_field("./", particles, velocities, "velocities", normalize=False)
+    # debug_particle_field("./", particles, densities, "densities-1")
+    # exit()
     # debug_particle_field("./", particles, densities, "densities")
 
-    substeps = 10
+    substeps = 5
     curr_dt = visualize_dt / substeps
     for frame in range(from_frame + 1, total_frames + 1):
         for substep_idx in range(substeps):
@@ -198,8 +208,15 @@ def main():
             solver.solve(
                 particles, velocities, pressures, densities, curr_dt, substep_idx
             )
+            # print(1)
+            exit()
+            wp.launch(
+                enforce_boundary,
+                dim=init_nx * init_ny,
+                inputs=[particles, velocities, curr_dt],
+            )
         print(frame)
-        dump_data(frame)
+        # dump_data(frame)
 
 
 if __name__ == "__main__":

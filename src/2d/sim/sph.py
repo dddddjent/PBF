@@ -21,7 +21,7 @@ def get_initial_density(
         density: wp.array(dtype=float),
     ):
         p_len = particles.shape[0]
-        index = p_len // 2
+        index = p_len // 2 + 10
 
         p = particles[index]
         density[0] = wp.float32(0.0)
@@ -33,12 +33,12 @@ def get_initial_density(
             if wp.length(x_p_neighbor) < kernel_radius:
                 density[0] += W(x_p_neighbor, kernel_radius) * 1.0
 
-        query = wp.hash_grid_query(boundary_particle_grid, p, kernel_radius)
-        query_idx = int(0)
-        while wp.hash_grid_query_next(query, query_idx):
-            x_p_neighbor = to2d(p - boundary_particles[query_idx])
-            if wp.length(x_p_neighbor) < kernel_radius:
-                density[0] += W(x_p_neighbor, kernel_radius) * 1.0
+        # query = wp.hash_grid_query(boundary_particle_grid, p, kernel_radius)
+        # query_idx = int(0)
+        # while wp.hash_grid_query_next(query, query_idx):
+        #     x_p_neighbor = to2d(p - boundary_particles[query_idx])
+        #     if wp.length(x_p_neighbor) < kernel_radius:
+        #         density[0] += W(x_p_neighbor, kernel_radius) * 1.0
 
     density = wp.zeros(1, dtype=float)
     wp.launch(
@@ -82,19 +82,19 @@ def update_density(
     p = particles[i]
     densities[i] = wp.float32(0.0)
 
-    query = wp.hash_grid_query(particle_grid, p, kernel_radius)
+    query = wp.hash_grid_query(particle_grid, p, kernel_radius * 2.0)
     query_idx = int(0)
     while wp.hash_grid_query_next(query, query_idx):
         x_p_neighbor = to2d(p - particles[query_idx])
-        if wp.length(x_p_neighbor) < kernel_radius:
+        if wp.length(x_p_neighbor) < kernel_radius * 2.0:
             densities[i] += W(x_p_neighbor, kernel_radius) * 1.0
 
-    # query = wp.hash_grid_query(boundary_particle_grid, p, kernel_radius)
-    # query_idx = int(0)
-    # while wp.hash_grid_query_next(query, query_idx):
-    #     x_p_neighbor = to2d(p - boundary_particles[query_idx])
-    #     if wp.length(x_p_neighbor) < kernel_radius:
-    #         densities[i] += W(x_p_neighbor, kernel_radius) * 1.0
+    query = wp.hash_grid_query(boundary_particle_grid, p, kernel_radius * 2.0)
+    query_idx = int(0)
+    while wp.hash_grid_query_next(query, query_idx):
+        x_p_neighbor = to2d(p - boundary_particles[query_idx])
+        if wp.length(x_p_neighbor) < kernel_radius * 2.0:
+            densities[i] += W(x_p_neighbor, kernel_radius) * 1.0
 
 
 @wp.kernel
@@ -104,3 +104,23 @@ def apply_gravity(
 ):
     i = wp.tid()
     velocities[i] += dt * wp.vec2(0.0, -9.8)
+
+
+@wp.kernel
+def enforce_boundary(
+    particles: wp.array(dtype=wp.vec3), velocities: wp.array(dtype=wp.vec2), dt: float
+):
+    i = wp.tid()
+    p = particles[i]
+    v = velocities[i]
+    p1 = to2d(p) + dt * v
+
+    if p1.x < 0.0:
+        p1.x = 0.0
+    if p1.x > 1.0:
+        p1.x = 1.0
+    if p1.y < 0.0:
+        p1.y = 0.0
+    if p1.y > 1.5:
+        p1.y = 1.5
+    velocities[i] = (p1 - to2d(p)) / dt
