@@ -170,7 +170,7 @@ def update_density():
     )
 
 
-def vorticity_confinement(strength=1.0):
+def vorticity_confinement(strength=0.1):
     wp.launch(
         sph.compute_vorticity,
         dim=n_particles,
@@ -273,13 +273,13 @@ def main():
             # frame * substeps + substep_idx,
             frame,
         )
-        debug_particle_field(
-            # "./", particles, densities, f"densities-{frame}-{substep_idx}"
-            "./",
-            particles,
-            vorticities,
-            f"vorticities-{frame}",
-        )
+        # debug_particle_field(
+        #     # "./", particles, densities, f"densities-{frame}-{substep_idx}"
+        #     "./",
+        #     particles,
+        #     vorticities,
+        #     f"vorticities-{frame}",
+        # )
         # debug_particle_field(
         #     # "./", particles, densities, f"densities-{frame}-{substep_idx}"
         #     "./",

@@ -265,7 +265,7 @@ def init_liquid(
         i, j = wp.tid()
         p_idx = i * ny + j  # particle index
 
-        p = dx * wp.vec2(wp.float32(i), wp.float32(j)) + wp.vec2(5.0, 5.0)
+        p = dx * wp.vec2(wp.float32(i), wp.float32(j)) + wp.vec2(5.0, 50.0)
         particles[p_idx] = to3d(p)
 
         velocities[p_idx] = wp.vec2(0.0, 0.0)
