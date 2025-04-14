@@ -598,6 +598,7 @@ class PBFPossionSolver:
         self.particle_buffer = wp.zeros(n_particles, dtype=wp.vec3)
         self.C = wp.zeros(n_particles, dtype=wp.float32)
         self.gradC = wp.zeros(n_particles, dtype=wp.vec2)
+        self.errors = wp.zeros(n_particles, dtype=wp.float32)
 
     @wp.kernel
     def compute_C(
@@ -706,19 +707,28 @@ class PBFPossionSolver:
             p.y = 256.0
         particles[i] = p
 
+    @wp.kernel
+    def compute_error(
+        densities: wp.array(dtype=wp.float32),
+        d0: float,
+        errors: wp.array(dtype=wp.float32),
+    ):
+        i = wp.tid()
+        errors[i] = wp.abs(densities[i] - d0) / d0
+
     def solve(
         self,
         particles: wp.array,
-        velocities: wp.array,
         densities: wp.array,
         dt: float,
         debug_info: str = "",
     ):
-        lambdas = wp.zeros(self.n_particles, dtype=wp.float32)
+        self.lambdas = wp.zeros(self.n_particles, dtype=wp.float32)
 
         iter = 0
-        while iter < self.max_iterations:
-            self.particle_grid.build(points=particles, radius=self.kernel_radius)
+        error = 10000
+        while iter < self.max_iterations and error > self.error_tolerance:
+            self.particle_grid.build(points=particles, radius=self.kernel_radius * 2.0)
 
             wp.launch(
                 sph.update_density,
@@ -786,4 +796,16 @@ class PBFPossionSolver:
             )
 
             wp.copy(particles, self.particle_buffer, count=self.n_particles)
+
+            wp.launch(
+                self.compute_error,
+                dim=self.n_particles,
+                inputs=[
+                    densities,
+                    self.d0,
+                    self.errors,
+                ],
+            )
+            error = wp.utils.array_sum(self.errors) / self.n_particles
             iter += 1
+        print(f"{debug_info}  iter: {iter}  error: {error}")

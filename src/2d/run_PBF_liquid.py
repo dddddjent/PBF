@@ -197,8 +197,8 @@ def main():
         n_particles,
         kernel_radius,
         d0,
-        1e-3,
-        60,
+        1e-2,
+        4000,
         (256.0, 256.0),
     )
 
@@ -216,9 +216,7 @@ def main():
             )
             advection_predict(curr_dt)
             particle_grid.build(points=particles_pred, radius=kernel_radius)
-            solver.solve(
-                particles_pred, velocities, densities, curr_dt, f"{frame}_{substep_idx}"
-            )
+            solver.solve(particles_pred, densities, curr_dt, f"{frame}_{substep_idx}")
             wp.launch(
                 update_velocity,
                 dim=n_particles,
@@ -233,11 +231,14 @@ def main():
             # frame * substeps + substep_idx,
             frame,
         )
-        # debug_particle_field(
-        #     "./", particles, densities, f"densities-{frame}-{substep_idx}"
-        # )
+        debug_particle_field(
+            # "./", particles, densities, f"densities-{frame}-{substep_idx}"
+            "./",
+            particles,
+            densities,
+            f"densities-{frame}",
+        )
         print(frame)
-        # dump_data(frame)
 
 
 if __name__ == "__main__":
