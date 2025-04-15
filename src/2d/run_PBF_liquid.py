@@ -258,7 +258,7 @@ def main():
     )
 
     dump_boundary_particles(particles_dir, particles, boundary_particles)
-    debug_particle_field("./", particles, densities, "densities-1")
+    # debug_particle_field("./", particles, densities, "densities-1")
 
     substeps = 2
     curr_dt = visualize_dt / substeps

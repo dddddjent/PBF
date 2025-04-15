@@ -618,6 +618,8 @@ class PBFPossionSolver:
     def compute_gradC(
         particles: wp.array(dtype=wp.vec3),
         particle_grid: wp.uint64,
+        boundary_particles: wp.array(dtype=wp.vec3),
+        boundary_particle_grid: wp.uint64,
         d0: float,
         kernel_radius: float,
         gradC: wp.array(dtype=wp.vec2),
@@ -635,12 +637,22 @@ class PBFPossionSolver:
             x_p_neighbor = to2d(p - particles[query_idx])
             if wp.length(x_p_neighbor) < kernel_radius * 2.0:
                 gradC[i] += gradW(x_p_neighbor, kernel_radius)
+
+        query = wp.hash_grid_query(boundary_particle_grid, p, kernel_radius * 2.0)
+        query_idx = int(0)
+        while wp.hash_grid_query_next(query, query_idx):
+            x_p_neighbor = to2d(p - boundary_particles[query_idx])
+            if wp.length(x_p_neighbor) < kernel_radius * 2.0:
+                gradC[i] += gradW(x_p_neighbor, kernel_radius)
+
         gradC[i] /= d0
 
     @wp.kernel
     def compute_lambdas(
         particles: wp.array(dtype=wp.vec3),
         particle_grid: wp.uint64,
+        boundary_particles: wp.array(dtype=wp.vec3),
+        boundary_particle_grid: wp.uint64,
         C: wp.array(dtype=wp.float32),
         gradC: wp.array(dtype=wp.vec2),
         d0: float,
@@ -664,6 +676,14 @@ class PBFPossionSolver:
                 grad = -gradW(x_p_neighbor, kernel_radius) / d0
                 temp += wp.dot(grad, grad)
 
+        query = wp.hash_grid_query(boundary_particle_grid, p, kernel_radius * 2.0)
+        query_idx = int(0)
+        while wp.hash_grid_query_next(query, query_idx):
+            x_p_neighbor = to2d(p - boundary_particles[query_idx])
+            if wp.length(x_p_neighbor) < kernel_radius * 2.0:
+                grad = -gradW(x_p_neighbor, kernel_radius) / d0
+                temp += wp.dot(grad, grad)
+
         lambdas[i] = lambdas[i] + (-C[i] - alphas[i] / (dt * dt) * lambdas[i]) / (
             alphas[i] / (dt * dt) + temp
         )
@@ -672,6 +692,8 @@ class PBFPossionSolver:
     def update_positions(
         particles: wp.array(dtype=wp.vec3),
         particle_grid: wp.uint64,
+        boundary_particles: wp.array(dtype=wp.vec3),
+        boundary_particle_grid: wp.uint64,
         lambdas: wp.array(dtype=wp.float32),
         d0: float,
         kernel_radius: float,
@@ -690,6 +712,25 @@ class PBFPossionSolver:
             if query_idx == i:
                 continue
             x_p_neighbor = to2d(p - particles[query_idx])
+            if wp.length(x_p_neighbor) < kernel_radius * 2.0:
+                s_corr = (
+                    corr_parameters.x
+                    * (
+                        W(x_p_neighbor, kernel_radius)
+                        / W(corr_parameters.y * kernel_radius, kernel_radius)
+                    )
+                    ** corr_parameters.z
+                )
+                delta += (
+                    (lambdas[i] + lambdas[query_idx] + s_corr)
+                    * gradW(x_p_neighbor, kernel_radius)
+                    / d0
+                )
+
+        query = wp.hash_grid_query(boundary_particle_grid, p, kernel_radius * 2.0)
+        query_idx = int(0)
+        while wp.hash_grid_query_next(query, query_idx):
+            x_p_neighbor = to2d(p - boundary_particles[query_idx])
             if wp.length(x_p_neighbor) < kernel_radius * 2.0:
                 s_corr = (
                     corr_parameters.x
@@ -765,6 +806,8 @@ class PBFPossionSolver:
                 inputs=[
                     particles,
                     self.particle_grid.id,
+                    self.boundary_particles,
+                    self.boundary_particle_grid.id,
                     self.d0,
                     self.kernel_radius,
                     self.gradC,
@@ -776,6 +819,8 @@ class PBFPossionSolver:
                 inputs=[
                     particles,
                     self.particle_grid.id,
+                    self.boundary_particles,
+                    self.boundary_particle_grid.id,
                     self.C,
                     self.gradC,
                     self.d0,
@@ -791,6 +836,8 @@ class PBFPossionSolver:
                 inputs=[
                     particles,
                     self.particle_grid.id,
+                    self.boundary_particles,
+                    self.boundary_particle_grid.id,
                     self.lambdas,
                     self.d0,
                     self.kernel_radius,
