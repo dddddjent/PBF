@@ -19,6 +19,9 @@ from util.io_util import (
 from util.logger import Logger
 from sim.init_conditions import init_liquid
 from sim.sph import (
+    apply_viscosity,
+    compute_vorticity,
+    damp,
     get_initial_density,
     forward_euler_advection,
     apply_acc,
@@ -35,6 +38,12 @@ parser.add_argument(
 parser.add_argument("--CFL", help="CFL number", type=float, default=0.5)
 parser.add_argument("--from_frame", help="Start frame", type=int, default=0)
 parser.add_argument("--total_frames", help="Total frames", type=int, default=4000)
+parser.add_argument(
+    "--damping_speed",
+    help="Percentage of velocity remains after 1 second",
+    type=float,
+    default=0.01,
+)
 args = parser.parse_args()
 
 visualize_dt = args.visualize_dt
@@ -49,8 +58,9 @@ grid_nx = wp.constant(256)
 grid_ny = wp.constant(256)
 dx = wp.constant(1.0)
 init_bounding_box = [[0.25, 0.5], [0.75, 1.0]]
-kernel_scale = int(3)
-kernel_radius = wp.constant(3.0 * dx)
+kernel_scale = int(4)
+kernel_radius = wp.constant(4.2 * dx)
+damping_speed = args.damping_speed
 
 exp_name = init_condition + "-PBF"
 if args.name is None:
@@ -97,6 +107,7 @@ lambdas = wp.zeros(n_particles, dtype=wp.float32)
 alphas = wp.full(n_particles, 1e-3, dtype=wp.float32)
 boundary_particles = wp.zeros(n_particles, dtype=wp.vec3)
 nb_particles = 0
+velocities_temp = wp.zeros(n_particles, dtype=wp.vec2)
 
 acc_external = wp.zeros(n_particles, dtype=wp.vec2)
 vorticities = wp.zeros(n_particles, dtype=wp.float32)
@@ -200,7 +211,7 @@ def vorticity_confinement(strength=0.1):
 def apply_external_force(dt):
     acc_external.zero_()
 
-    vorticity_confinement()
+    vorticity_confinement(0.1)
     wp.launch(
         apply_acc,
         dim=init_nx * init_ny,
@@ -243,6 +254,7 @@ def main():
         1e-2,
         400,
         (256.0, 256.0),
+        k_corr=-0.01,
     )
 
     dump_boundary_particles(particles_dir, particles, boundary_particles)
@@ -250,18 +262,37 @@ def main():
 
     substeps = 2
     curr_dt = visualize_dt / substeps
+    damping_factor = (1.0 - damping_speed) ** (curr_dt / 1.0)
     for frame in range(from_frame + 1, total_frames + 1):
         timer.reset()
         for substep_idx in range(substeps):
             apply_external_force(curr_dt)
             advection_predict(curr_dt)
-            particle_grid.build(points=particles_pred, radius=kernel_radius)
             solver.solve(particles_pred, densities, curr_dt, f"{frame}_{substep_idx}")
             wp.launch(
                 update_velocity,
                 dim=n_particles,
                 inputs=[particles, particles_pred, velocities, curr_dt],
             )
+            particle_grid.build(points=particles_pred, radius=kernel_radius)
+            wp.launch(
+                apply_viscosity,
+                dim=n_particles,
+                inputs=[
+                    particles,
+                    particle_grid.id,
+                    velocities,
+                    kernel_radius,
+                    velocities_temp,
+                    0.01,
+                ],
+            )
+            wp.launch(
+                damp,
+                dim=n_particles,
+                inputs=[velocities_temp, damping_factor],
+            )
+            wp.copy(velocities, velocities_temp, count=n_particles)
             wp.copy(particles, particles_pred, count=n_particles)
 
         print(f"frame: {frame}, {timer.elapsed()}")

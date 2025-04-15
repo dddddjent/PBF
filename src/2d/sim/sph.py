@@ -167,3 +167,35 @@ def compute_vorticity_confinement_acc(
     f = wp.cross(to3d(N), wp.vec3(0.0, 0.0, vorticities[i]))
 
     acc[i] += strength * to2d(f) / densities[i]
+
+
+@wp.kernel
+def apply_viscosity(
+    particles: wp.array(dtype=wp.vec3),
+    particle_grid: wp.uint64,
+    velocities: wp.array(dtype=wp.vec2),
+    kernel_radius: float,
+    velocities_temp: wp.array(dtype=wp.vec2),
+    strength: float = 0.01,
+):
+    i = wp.tid()
+    p = particles[i]
+
+    temp = wp.vec2(0.0, 0.0)
+
+    query = wp.hash_grid_query(particle_grid, p, kernel_radius * 2.0)
+    query_idx = int(0)
+    while wp.hash_grid_query_next(query, query_idx):
+        x_p_neighbor = to2d(p - particles[query_idx])
+        if wp.length(x_p_neighbor) < kernel_radius * 2.0:
+            temp += (velocities[i] - velocities[query_idx]) * W(
+                x_p_neighbor, kernel_radius
+            )
+
+    velocities_temp[i] = velocities[i] + strength * temp
+
+
+@wp.kernel
+def damp(velocities: wp.array(dtype=wp.vec2), damping_factor: float):
+    i = wp.tid()
+    velocities[i] *= damping_factor

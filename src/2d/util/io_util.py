@@ -225,3 +225,23 @@ def debug_particle_vector_field(
 
     plt.savefig(os.path.join(particles_dir, f"{name}.png"))
     plt.close(fig)
+
+
+def concatenate_pngs_to_video(png_dir, png_prefix, fps=10, video_name="output.mp4"):
+    import imageio
+
+    images = []
+    for png in os.listdir(png_dir):
+        if png.startswith(png_prefix):
+            images.append(os.path.join(png_dir, png))
+    images = sorted(images)
+
+    video_name = os.path.join(png_dir, video_name)
+    i = 0
+    with imageio.get_writer(video_name, fps=fps) as writer:
+        for img_path in images:
+            i += 1
+            if i % fps == 0:
+                print(f"processing {i}th images")
+            image = imageio.imread(img_path)
+            writer.append_data(image)
