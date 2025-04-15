@@ -12,3 +12,6 @@ wheels/
 .vscode/
 logs/
 *.png
+*.npy
+*.vti
+*.vtu
