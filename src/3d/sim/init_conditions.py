@@ -32,7 +32,8 @@ def init_liquid(
         p_idx = i * ny * nz + j * nz + k  # particle index
 
         p = dx * wp.vec3(wp.float32(i), wp.float32(j), wp.float32(k)) + wp.vec3(
-            5.0, 5.0, 50.0
+            # 5.0, 5.0, 50.0
+            5.0, 5.0, 25.0
         )
         particles[p_idx] = p
 
