@@ -23,9 +23,9 @@ def sample(
     # k = wp.max(0, wp.min(int(w), dim.z - 1))
     # return qf[i, j, k]
     if u < 0 or v < 0 or w < 0:
-        return 0.0
+        return 1.0
     if u > dim.x - 1 or v > dim.y - 1 or w > dim.z - 1:
-        return 0.0
+        return 1.0
     return qf[int(u), int(v), int(w)]
 
 

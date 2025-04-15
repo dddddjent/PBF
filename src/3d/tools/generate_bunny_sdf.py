@@ -8,8 +8,7 @@ import trimesh
 mesh = trimesh.load("obj/stanford-bunny.obj")
 # mesh.apply_scale([0.1, 0.1, 0.1])
 
-voxels = -mesh_to_voxels(
-    # voxels = mesh_to_voxels(
+voxels = mesh_to_voxels(
     mesh,
     voxel_resolution=128 - 2,
     surface_point_method="sample",

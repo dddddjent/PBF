@@ -4,6 +4,15 @@ import datetime
 import shutil
 
 import warp as wp
+
+wp.set_device("cuda:0")
+wp.config.mode = "release"
+# wp.config.mode = "debug"
+# wp.config.verify_cuda = True
+# wp.config.verify_fp = True
+wp.config.cache_kernels = False
+wp.init()
+
 import numpy as np
 
 import sim.sph as sph
@@ -24,7 +33,7 @@ from sim.sph import (
     compute_vorticity,
     compute_vorticity_confinement_acc,
 )
-from sim.poisson import PBFPossionSolver
+from sim.poisson import PBF_SDF_PossionSolver
 
 #################################### Init #####################################
 parser = argparse.ArgumentParser()
@@ -88,13 +97,6 @@ shutil.copy(__file__, logsdir)
 
 timer = Timer()
 
-wp.set_device("cuda:0")
-wp.config.mode = "release"
-# wp.config.mode = "debug"
-# wp.config.verify_cuda = True
-# wp.config.verify_fp = True
-wp.config.cache_kernels = False
-wp.init()
 ################################################################################
 
 ################################## Variables #####################################
@@ -109,6 +111,9 @@ velocities_temp = wp.zeros(n_particles, dtype=wp.vec3)
 
 acc_external = wp.zeros(n_particles, dtype=wp.vec3)
 vorticities = wp.zeros(n_particles, dtype=wp.vec3)
+
+SDF = np.load("obj/bunny_transformed.npy")
+SDF = wp.array(SDF, dtype=wp.float32)
 
 particle_grid = wp.HashGrid(dim_x=grid_nx, dim_y=grid_ny, dim_z=grid_nz)
 boundary_grid = wp.HashGrid(
@@ -222,11 +227,12 @@ def main():
     )
     logger.info(f"d0: {float(d0)}")
     update_density()
-    solver = PBFPossionSolver(
+    solver = PBF_SDF_PossionSolver(
         particle_grid,
         boundary_particles,
         boundary_grid,
         alphas,
+        SDF,
         n_particles,
         kernel_radius,
         d0,
