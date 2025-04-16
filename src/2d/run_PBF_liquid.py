@@ -33,7 +33,7 @@ from sim.poisson import PBFPossionSolver
 parser = argparse.ArgumentParser()
 parser.add_argument("-n", "--name", help="Experiment name")
 parser.add_argument(
-    "--visualize_dt", help="Visualization time step", type=float, default=0.1
+    "--visualize_dt", help="Visualization time step", type=float, default=0.016
 )
 parser.add_argument("--CFL", help="CFL number", type=float, default=0.5)
 parser.add_argument("--from_frame", help="Start frame", type=int, default=0)
@@ -91,9 +91,10 @@ shutil.copy(__file__, logsdir)
 timer = Timer()
 
 wp.set_device("cuda:0")
-wp.config.mode = "debug"
-wp.config.verify_cuda = True
-wp.config.verify_fp = True
+wp.config.mode = "release"
+# wp.config.mode = "debug"
+# wp.config.verify_cuda = True
+# wp.config.verify_fp = True
 wp.config.cache_kernels = False
 wp.init()
 ################################################################################
@@ -260,7 +261,7 @@ def main():
     dump_boundary_particles(particles_dir, particles, boundary_particles)
     # debug_particle_field("./", particles, densities, "densities-1")
 
-    substeps = 2
+    substeps = 1
     curr_dt = visualize_dt / substeps
     damping_factor = (1.0 - damping_speed) ** (curr_dt / 1.0)
     for frame in range(from_frame + 1, total_frames + 1):
